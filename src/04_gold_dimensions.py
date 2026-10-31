@@ -121,3 +121,33 @@ for name, loader in DIMENSIONS:
 # MAGIC UNION ALL SELECT 'dim_franchise', COUNT(*) FROM workspace.gold.dim_franchise
 # MAGIC UNION ALL SELECT 'dim_product',   COUNT(*) FROM workspace.gold.dim_product
 # MAGIC UNION ALL SELECT 'dim_customer',  COUNT(*) FROM workspace.gold.dim_customer;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- SCD2 check: customers with more than one version (one row per version)
+# MAGIC SELECT customer_id, customer_key, city, state, country, email,
+# MAGIC        valid_from, valid_to, is_current
+# MAGIC FROM workspace.gold.dim_customer
+# MAGIC WHERE customer_id IN (
+# MAGIC   SELECT customer_id
+# MAGIC   FROM workspace.gold.dim_customer
+# MAGIC   GROUP BY customer_id
+# MAGIC   HAVING COUNT(*) > 1
+# MAGIC )
+# MAGIC ORDER BY customer_id, valid_from;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- Type-1 check: email changes are overwritten in place (still one version per customer,
+# MAGIC -- unless the customer also moved)
+# MAGIC SELECT d.customer_id,
+# MAGIC        COUNT(*)                       AS versions,
+# MAGIC        MAX_BY(d.email, d.valid_from)  AS current_email
+# MAGIC FROM workspace.gold.dim_customer d
+# MAGIC WHERE d.customer_id IN (
+# MAGIC   SELECT customer_id FROM workspace.gold.dim_customer WHERE email LIKE 'new.%'
+# MAGIC )
+# MAGIC GROUP BY d.customer_id
+# MAGIC ORDER BY versions DESC, d.customer_id;
