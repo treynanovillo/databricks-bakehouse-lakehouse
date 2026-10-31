@@ -1,2 +1,2 @@
 # databricks-bakehouse-lakehouse
-End-to-end Databricks Lakehouse: incremental ingestion with Auto Loader, medallion architecture (bronze/silver/gold), Delta MERGE, data quality, audit logging and orchestrated Jobs.
+Production-style Databricks Lakehouse project: Auto Loader incremental ingestion with schema evolution, medallion architecture on Unity Catalog, Delta MERGE upserts with watermarks, data quality quarantine, audit logging, parameterized Jobs and reusable Python libraries.
