@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Editores y sistema
+.vscode/
+.idea/
+.DS_Store
+
+# Databricks (configuración local y despliegues de bundles)
+.databricks/
+
+# Credenciales: nunca al repo
+.env
+*.pem
