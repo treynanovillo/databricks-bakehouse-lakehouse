@@ -1,0 +1,778 @@
+{
+  "datasets": [
+    {
+      "name": "19491724",
+      "displayName": "sales",
+      "queryLines": [
+        "-- Sales at transaction grain, joined to every dimension of the star schema.\r\n",
+        "-- INNER JOINs are safe: every fact references a dimension row (unknown member -1).\r\n",
+        "SELECT\r\n",
+        "  f.transaction_id,\r\n",
+        "  d.date,\r\n",
+        "  d.year,\r\n",
+        "  d.month,\r\n",
+        "  d.month_name,\r\n",
+        "  d.day_name,\r\n",
+        "  d.is_weekend,\r\n",
+        "  p.product_name,\r\n",
+        "  fr.franchise_name,\r\n",
+        "  fr.city          AS store_city,\r\n",
+        "  fr.country       AS store_country,\r\n",
+        "  fr.size          AS store_size,\r\n",
+        "  c.city           AS customer_city,\r\n",
+        "  c.country        AS customer_country,\r\n",
+        "  f.payment_method,\r\n",
+        "  f.quantity,\r\n",
+        "  f.total_price\r\n",
+        "FROM workspace.gold.fact_sales     f\r\n",
+        "JOIN workspace.gold.dim_date       d  ON f.date_key      = d.date_key\r\n",
+        "JOIN workspace.gold.dim_product    p  ON f.product_key   = p.product_key\r\n",
+        "JOIN workspace.gold.dim_franchise  fr ON f.franchise_key = fr.franchise_key\r\n",
+        "JOIN workspace.gold.dim_customer   c  ON f.customer_key  = c.customer_key"
+      ],
+      "columns": [
+        {
+          "displayName": "avg_ticket",
+          "description": "",
+          "expression": "SUM(total_price) / COUNT(DISTINCT transaction_id)"
+        }
+      ]
+    },
+    {
+      "name": "7ccb066c",
+      "displayName": "pipeline_runs",
+      "queryLines": [
+        "-- Pipeline observability: final status of every task run in the last 30 days\r\n",
+        "SELECT\r\n",
+        "  job_run_id,\r\n",
+        "  task,\r\n",
+        "  layer,\r\n",
+        "  target_table,\r\n",
+        "  status,\r\n",
+        "  rows_read,\r\n",
+        "  rows_written,\r\n",
+        "  rows_rejected,\r\n",
+        "  started_at,\r\n",
+        "  finished_at,\r\n",
+        "  timestampdiff(SECOND, started_at, finished_at) AS duration_seconds,\r\n",
+        "  error_message\r\n",
+        "FROM workspace.ops.v_pipeline_runs\r\n",
+        "WHERE started_at >= current_timestamp() - INTERVAL 30 DAYS"
+      ]
+    },
+    {
+      "name": "1a3ca7bb",
+      "displayName": "data_quality",
+      "queryLines": [
+        "-- Data quality: rejected or flagged records by rule and layer\r\n",
+        "SELECT\r\n",
+        "  layer,\r\n",
+        "  target_table,\r\n",
+        "  rule_name,\r\n",
+        "  COUNT(*)         AS issues,\r\n",
+        "  MAX(detected_at) AS last_detected_at\r\n",
+        "FROM workspace.ops.data_quality_issues\r\n",
+        "GROUP BY ALL"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "7833ab25",
+      "displayName": "Sales",
+      "layout": [
+        {
+          "widget": {
+            "name": "192a1edb",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Bakehouse Sales\n",
+                "\n",
+                "Gold star schema · refreshed daily by `bakehouse_daily` · amounts in USD"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "revenue",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "19491724",
+                  "fields": [
+                    {
+                      "name": "sum(total_price)",
+                      "expression": "SUM(`total_price`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "### <span style=\"text-align:center;display:block\">Revenue</span>",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(total_price)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "7dc84222",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "19491724",
+                  "fields": [
+                    {
+                      "name": "count(transaction_id)",
+                      "expression": "COUNT(`transaction_id`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "### <span style=\"text-align:center;display:block\">Transactions</span>",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(transaction_id)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 3,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "0f3822a4",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "19491724",
+                  "fields": [
+                    {
+                      "name": "sum(quantity)",
+                      "expression": "SUM(`quantity`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "### <span style=\"text-align:center;display:block\">Units sold</span>",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(quantity)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 3,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "91573498",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "19491724",
+                  "fields": [
+                    {
+                      "name": "measure(avg_ticket)",
+                      "expression": "MEASURE(`avg_ticket`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "### <span style=\"text-align:center;display:block\">Avg. ticket</span>",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(avg_ticket)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 3,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "revenue-over-time",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "19491724",
+                  "fields": [
+                    {
+                      "name": "daily(date)",
+                      "expression": "DATE_TRUNC(\"DAY\", `date`)"
+                    },
+                    {
+                      "name": "sum(total_price)",
+                      "expression": "SUM(`total_price`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "### <span style=\"text-align:center;display:block;\">Revenue over time</span>",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "daily(date)",
+                  "axis": {
+                    "hideTitle": true,
+                    "hideLabels": false
+                  },
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(total_price)",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "displayName": "Total price",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "revenue-by-product",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "19491724",
+                  "fields": [
+                    {
+                      "name": "sum(total_price)",
+                      "expression": "SUM(`total_price`)"
+                    },
+                    {
+                      "name": "product_name",
+                      "expression": "`product_name`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "### <span style=\"text-align:center;display:block;\">Revenue by product</span>",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(total_price)",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "product_name",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 5,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "a61c10e4",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "19491724",
+                  "fields": [
+                    {
+                      "name": "sum(total_price)",
+                      "expression": "SUM(`total_price`)"
+                    },
+                    {
+                      "name": "franchise_name",
+                      "expression": "`franchise_name`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "### <span style=\"text-align:center;display:block\">Top 10 stores by revenue</span>",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(total_price)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "franchise_name",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "scale": {
+                    "type": "categorical",
+                    "categorySize": {
+                      "type": "number-of-categories",
+                      "number": 10
+                    },
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 10,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "c6f45545",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "19491724",
+                  "fields": [
+                    {
+                      "name": "payment_method",
+                      "expression": "`payment_method`"
+                    },
+                    {
+                      "name": "sum(total_price)",
+                      "expression": "SUM(`total_price`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "### <span style=\"text-align:center;display:block\">Revenue by payment method</span>",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "payment_method",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(total_price)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "date",
+            "queries": [
+              {
+                "name": "dashboards/01f1d61e52ff11909a67b9d2814c4b0a/datasets/01f1d61e77ca12fcaf11f5c96a054e96_date",
+                "query": {
+                  "datasetName": "19491724",
+                  "fields": [
+                    {
+                      "name": "date",
+                      "expression": "`date`"
+                    },
+                    {
+                      "name": "date_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Date",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-date-range-picker",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "date",
+                    "queryName": "dashboards/01f1d61e52ff11909a67b9d2814c4b0a/datasets/01f1d61e77ca12fcaf11f5c96a054e96_date"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 4,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "store-country",
+            "queries": [
+              {
+                "name": "dashboards/01f1d61e52ff11909a67b9d2814c4b0a/datasets/01f1d61e77ca12fcaf11f5c96a054e96_store_country",
+                "query": {
+                  "datasetName": "19491724",
+                  "fields": [
+                    {
+                      "name": "store_country",
+                      "expression": "`store_country`"
+                    },
+                    {
+                      "name": "store_country_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Store country",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "store_country",
+                    "queryName": "dashboards/01f1d61e52ff11909a67b9d2814c4b0a/datasets/01f1d61e77ca12fcaf11f5c96a054e96_store_country"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "dae97b94",
+            "queries": [
+              {
+                "name": "dashboards/01f1d61e52ff11909a67b9d2814c4b0a/datasets/01f1d61e77ca12fcaf11f5c96a054e96_product_name",
+                "query": {
+                  "datasetName": "19491724",
+                  "fields": [
+                    {
+                      "name": "product_name",
+                      "expression": "`product_name`"
+                    },
+                    {
+                      "name": "product_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Product",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "product_name",
+                    "queryName": "dashboards/01f1d61e52ff11909a67b9d2814c4b0a/datasets/01f1d61e77ca12fcaf11f5c96a054e96_product_name"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 2,
+            "width": 2,
+            "height": 1
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}
