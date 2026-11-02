@@ -1,0 +1,18 @@
+# =============================================================================
+# bakehouse_declarative: declarative (Lakeflow) version of the sales pipeline
+# Paths are relative to this file, so the definition works in any workspace.
+# Development/production mode is set per target in databricks.yml.
+# =============================================================================
+resources:
+  pipelines:
+    bakehouse_declarative:
+      name: bakehouse_declarative
+      catalog: workspace
+      schema: bakehouse_dlt
+      serverless: true
+      continuous: false          # triggered: runs on demand or from a job
+      channel: CURRENT
+      root_path: ../pipelines/bakehouse_declarative
+      libraries:
+        - glob:
+            include: ../pipelines/bakehouse_declarative/transformations/**
