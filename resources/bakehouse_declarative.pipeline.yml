@@ -7,7 +7,7 @@ resources:
   pipelines:
     bakehouse_declarative:
       name: bakehouse_declarative
-      catalog: workspace
+      catalog: ${var.catalog}
       schema: bakehouse_dlt
       serverless: true
       continuous: false          # triggered: runs on demand or from a job

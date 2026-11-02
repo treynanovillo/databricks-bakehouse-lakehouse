@@ -21,6 +21,7 @@ from lib.audit import audit_run
 from lib.config import Config
 from lib.master_data import latest_snapshot, merge_snapshot_scd1
 from lib.quality import log_quality_issues
+from lib.watermarks import get_watermark, set_watermark
 
 cfg = Config(catalog=dbutils.widgets.get("catalog"))
 JOB_RUN_ID = dbutils.widgets.get("job_run_id")
@@ -85,47 +86,65 @@ ENTITIES = [
 
 # =============================================================================
 # Load: latest snapshot -> quality checks -> SCD1 merge (one audited run per entity)
+# -----------------------------------------------------------------------------
+# A snapshot is applied only once: its timestamp is stored as the watermark, so
+# a daily run without a new snapshot skips the entity instead of re-hashing it.
 # =============================================================================
 for name, key, transform in ENTITIES:
     source_table = cfg.table("bronze", name)
     target_table = cfg.table("silver", name)
 
     with audit_run(cfg, "03_silver_master_data", "silver", target_table, JOB_RUN_ID) as run:
+        run.rows_read = run.rows_written = run.rows_rejected = 0
 
-        # 1. Latest snapshot mapped to the silver contract
-        snapshot = transform(latest_snapshot(spark.table(source_table)))
-        run.rows_read = snapshot.count()
+        # 1. Latest snapshot in bronze and its timestamp
+        raw_snapshot = latest_snapshot(spark.table(source_table))
+        snapshot_ts = raw_snapshot.agg(F.max("_source_file_ts")).first()[0]
+        watermark = get_watermark(spark, cfg, source_table, target_table)
 
-        # 2. Quality: rows without business key are logged and excluded
-        run.rows_rejected = log_quality_issues(
-            cfg, snapshot.filter(F.col(key).isNull()), run.run_id,
-            layer="silver", target_table=target_table, rule_name=f"{key}_null", key=key)
-        valid = snapshot.filter(F.col(key).isNotNull())
+        if watermark is not None and snapshot_ts <= watermark:
+            print(f"{target_table}: snapshot of {snapshot_ts} already applied, skipped")
+        else:
+            # 2. Snapshot mapped to the silver contract
+            snapshot = transform(raw_snapshot)
+            run.rows_read = snapshot.count()
 
-        # 3. Contract check: the business key must be unique within a snapshot.
-        #    Duplicates mean a broken extract -> fail loudly instead of guessing.
-        duplicated = valid.groupBy(key).count().filter("count > 1").count()
-        if duplicated:
-            raise ValueError(
-                f"{duplicated} duplicated {key} values in the latest snapshot of {source_table}")
+            # 3. Quality: rows without business key are logged and excluded
+            run.rows_rejected = log_quality_issues(
+                cfg, snapshot.filter(F.col(key).isNull()), run.run_id,
+                layer="silver", target_table=target_table,
+                rule_name=f"{key}_not_null", key=key)
+            valid = snapshot.filter(F.col(key).isNotNull())
 
-        # 4. SCD1 merge: insert new, update changed (hash), soft-delete missing
-        merge_snapshot_scd1(valid, target_table, key, run.run_id)
-        run.rows_written = (spark.table(target_table)
-                            .filter(F.col("_run_id") == run.run_id).count())
+            # 4. Contract check: the business key must be unique within a snapshot.
+            #    Duplicates mean a broken extract -> fail loudly instead of guessing.
+            duplicated = valid.groupBy(key).count().filter("count > 1").count()
+            if duplicated:
+                raise ValueError(f"{duplicated} duplicated {key} values in the "
+                                 f"latest snapshot of {source_table}")
 
-    print(f"{target_table}: read {run.rows_read} | written {run.rows_written} "
-          f"| rejected {run.rows_rejected}")
+            # 5. SCD1 merge: insert new, update changed (hash), soft-delete missing
+            merge_snapshot_scd1(valid, target_table, key, run.run_id)
+            run.rows_written = (spark.table(target_table)
+                                .filter(F.col("_run_id") == run.run_id).count())
+
+            # 6. Record the snapshot as applied
+            set_watermark(spark, cfg, source_table, target_table, snapshot_ts, run.run_id)
+
+            print(f"{target_table}: read {run.rows_read} | written {run.rows_written} "
+                  f"| rejected {run.rows_rejected}")
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC -- Silver master data: rows per snapshot and deletion status
+# MAGIC USE CATALOG IDENTIFIER(:catalog);
+# MAGIC
 # MAGIC SELECT 'customers' AS entity, _snapshot_id, is_deleted, COUNT(*) AS row_count
-# MAGIC FROM workspace.silver.customers
+# MAGIC FROM silver.customers
 # MAGIC GROUP BY ALL
 # MAGIC UNION ALL
 # MAGIC SELECT 'franchises', _snapshot_id, is_deleted, COUNT(*)
-# MAGIC FROM workspace.silver.franchises
+# MAGIC FROM silver.franchises
 # MAGIC GROUP BY ALL
 # MAGIC ORDER BY entity;

@@ -123,26 +123,30 @@ print(f"Read: {run.rows_read} | written: {run.rows_written}")
 # MAGIC %sql
 # MAGIC -- Reconciliation: every silver sale must be in the fact table, and unknown members
 # MAGIC -- should be zero (non-zero = late-arriving or missing master data)
+# MAGIC USE CATALOG IDENTIFIER(:catalog);
+# MAGIC
 # MAGIC SELECT
-# MAGIC   (SELECT COUNT(*) FROM workspace.silver.transactions)                       AS silver_sales,
-# MAGIC   (SELECT COUNT(*) FROM workspace.gold.fact_sales)                           AS fact_sales,
-# MAGIC   (SELECT COUNT(*) FROM workspace.gold.fact_sales WHERE customer_key  = -1)  AS unknown_customer,
-# MAGIC   (SELECT COUNT(*) FROM workspace.gold.fact_sales WHERE franchise_key = -1)  AS unknown_franchise,
-# MAGIC   (SELECT COUNT(*) FROM workspace.gold.fact_sales WHERE product_key   = -1)  AS unknown_product;
+# MAGIC   (SELECT COUNT(*) FROM silver.transactions)                       AS silver_sales,
+# MAGIC   (SELECT COUNT(*) FROM gold.fact_sales)                           AS fact_sales,
+# MAGIC   (SELECT COUNT(*) FROM gold.fact_sales WHERE customer_key  = -1)  AS unknown_customer,
+# MAGIC   (SELECT COUNT(*) FROM gold.fact_sales WHERE franchise_key = -1)  AS unknown_franchise,
+# MAGIC   (SELECT COUNT(*) FROM gold.fact_sales WHERE product_key   = -1)  AS unknown_product;
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC -- SCD2 in action: sales of customers who moved stay in the city where they lived
 # MAGIC -- when they bought (old version, is_current = false), not in Barcelona
+# MAGIC USE CATALOG IDENTIFIER(:catalog);
+# MAGIC
 # MAGIC SELECT c.customer_id, c.city, c.is_current,
 # MAGIC        COUNT(*)           AS sales,
 # MAGIC        SUM(f.total_price) AS revenue
-# MAGIC FROM workspace.gold.fact_sales f
-# MAGIC JOIN workspace.gold.dim_customer c
+# MAGIC FROM gold.fact_sales f
+# MAGIC JOIN gold.dim_customer c
 # MAGIC   ON f.customer_key = c.customer_key
 # MAGIC WHERE c.customer_id IN (
-# MAGIC   SELECT customer_id FROM workspace.gold.dim_customer
+# MAGIC   SELECT customer_id FROM gold.dim_customer
 # MAGIC   GROUP BY customer_id HAVING COUNT(*) > 1
 # MAGIC )
 # MAGIC GROUP BY ALL

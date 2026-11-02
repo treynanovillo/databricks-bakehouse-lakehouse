@@ -1,0 +1,47 @@
+# =============================================================================
+# Databricks Asset Bundle: Bakehouse lakehouse
+# -----------------------------------------------------------------------------
+# Single source of truth for the job and the declarative pipeline.
+#   databricks bundle validate -t dev
+#   databricks bundle deploy   -t dev
+# =============================================================================
+bundle:
+  name: bakehouse_lakehouse
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog of the environment.
+  notification_email:
+    description: Recipient of job failure and duration alerts.
+
+targets:
+  # Development: resources are prefixed with the deploying user and schedules
+  # are paused, so several developers can share a workspace safely.
+  dev:
+    mode: development
+    default: true
+    variables:
+      catalog: workspace
+      notification_email: ${workspace.current_user.userName}
+
+  # Production: deployed by CI/CD from main and run by a service principal.
+  # Not deployable in Free Edition (single workspace, no prod catalog);
+  # kept as the reference of how the project is promoted.
+  prod:
+    mode: production
+    workspace:
+      host: https://<prod-workspace>.cloud.databricks.com
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalog: prod
+      notification_email: data-platform-alerts@example.com
+    run_as:
+      service_principal_name: <service-principal-application-id>
+    resources:
+      jobs:
+        bakehouse_daily:
+          schedule:
+            pause_status: UNPAUSED
