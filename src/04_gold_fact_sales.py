@@ -18,8 +18,8 @@ from pyspark.sql import functions as F
 
 from lib.audit import audit_run
 from lib.config import Config
-from lib.dimensions import run_merge
-from lib.quality import log_rejected
+from lib.delta_utils import run_merge
+from lib.quality import log_quality_issues
 from lib.watermarks import get_watermark, set_watermark
 
 cfg = Config(catalog=dbutils.widgets.get("catalog"))
@@ -96,7 +96,7 @@ with audit_run(cfg, "04_gold_fact_sales", "gold", TARGET, JOB_RUN_ID) as run:
 
         # 4. Unknown members: keep the fact, log it for follow-up
         for key in DIMENSION_KEYS:
-            orphans = log_rejected(
+            orphans = log_quality_issues(
                 cfg, facts.filter(F.col(key) == -1), run.run_id, layer="gold",
                 target_table=TARGET, rule_name=f"unknown_{key.removesuffix('_key')}",
                 key="transaction_id")

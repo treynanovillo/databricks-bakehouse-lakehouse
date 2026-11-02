@@ -1,11 +1,15 @@
-"""Auditoría de ejecuciones: registra inicio y fin de cada tarea en ops.pipeline_runs."""
+"""Run auditing: records the start and end of every task in ops.pipeline_runs.
+
+The log is append-only: one RUNNING row when a task starts and one SUCCESS or
+FAILED row when it ends. The view ops.v_pipeline_runs exposes the final state.
+"""
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from pyspark.sql import SparkSession
-from pyspark.sql.types import (StructType, StructField, StringType,
-                               LongType, TimestampType)
+from pyspark.sql.types import (LongType, StringType, StructField, StructType,
+                               TimestampType)
 
 _SCHEMA = StructType([
     StructField("run_id", StringType()),
@@ -25,10 +29,17 @@ _SCHEMA = StructType([
 ])
 
 
-class AuditRun:
-    """Datos de una ejecución. El notebook rellena los contadores de filas."""
+def _summarize_error(error: Exception) -> str:
+    """Error type and message without the JVM stack trace, capped at 4,000 characters."""
+    text = f"{type(error).__name__}: {error}"
+    return text.split("JVM stacktrace:")[0].strip()[:4000]
 
-    def __init__(self, cfg, task, layer, target_table, job_run_id=None):
+
+class AuditRun:
+    """State of one task run. The calling notebook fills in the row counters."""
+
+    def __init__(self, cfg, task: str, layer: str, target_table: str,
+                 job_run_id: str | None = None):
         self.spark = SparkSession.getActiveSession()
         self.table = cfg.table("ops", "pipeline_runs")
         self.run_id = str(uuid.uuid4())
@@ -37,13 +48,15 @@ class AuditRun:
         self.task = task
         self.layer = layer
         self.target_table = target_table
-        self.rows_read = None
-        self.rows_written = None
-        self.rows_rejected = None
+        self.rows_read: int | None = None
+        self.rows_written: int | None = None
+        self.rows_rejected: int | None = None
         self.started_at = datetime.now(timezone.utc)
         self.user = self.spark.sql("SELECT current_user()").first()[0]
 
-    def _write(self, status, finished_at=None, error=None):
+    def _write(self, status: str, finished_at: datetime | None = None,
+               error: str | None = None) -> None:
+        """Append one audit row with the current state of the run."""
         row = (self.run_id, self.job_run_id, self.pipeline, self.task, self.layer,
                self.target_table, status, self.rows_read, self.rows_written,
                self.rows_rejected, error, self.started_at, finished_at, self.user)
@@ -52,19 +65,24 @@ class AuditRun:
 
 
 @contextmanager
-def audit_run(cfg, task, layer, target_table, job_run_id=None):
-    """Uso:
-        with audit_run(cfg, "02_bronze", "bronze", tabla, job_run_id) as run:
+def audit_run(cfg, task: str, layer: str, target_table: str,
+              job_run_id: str | None = None):
+    """Audit a block of code as one task run.
+
+    Usage:
+        with audit_run(cfg, "02_bronze", "bronze", target, job_run_id) as run:
             ...
             run.rows_written = n
-    Si el bloque falla: registra FAILED y RELANZA el error para que el Job también falle.
+
+    On failure the run is recorded as FAILED and the exception is RE-RAISED,
+    so the orchestrator (Job / ADF) also marks the task as failed.
     """
     run = AuditRun(cfg, task, layer, target_table, job_run_id)
     run._write("RUNNING")
     try:
         yield run
-    except Exception as e:
-        run._write("FAILED", datetime.now(timezone.utc), f"{type(e).__name__}: {e}"[:4000])
+    except Exception as error:
+        run._write("FAILED", datetime.now(timezone.utc), _summarize_error(error))
         raise
     else:
         run._write("SUCCESS", datetime.now(timezone.utc))

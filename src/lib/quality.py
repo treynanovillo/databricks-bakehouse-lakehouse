@@ -1,23 +1,24 @@
-"""Data quality helpers: log rejected records to ops.data_quality_issues."""
+"""Data quality helpers: record quality issues in ops.data_quality_issues."""
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 
-def log_rejected(cfg, rejected: DataFrame, run_id: str, layer: str, target_table: str,
-                 rule_name: str, key: str) -> int:
-    """Append rejected records to the data quality table.
+def log_quality_issues(cfg, records: DataFrame, run_id: str, layer: str,
+                       target_table: str, rule_name: str, key: str) -> int:
+    """Append records that broke a quality rule to the data quality table.
 
-    Each record is stored with the rule it broke and its full content as JSON,
-    so it can be analysed or reprocessed later.
+    Used both for rejected records (excluded from the target) and for flagged
+    records (loaded anyway, e.g. facts linked to an unknown dimension member).
+    Each record is stored with its full content as JSON for analysis or reprocessing.
 
     Returns:
-        Number of rejected records.
+        Number of records logged.
     """
-    n_rejected = rejected.count()
-    if n_rejected == 0:
+    n_records = records.count()
+    if n_records == 0:
         return 0
 
-    (rejected
+    (records
         .select(
             F.lit(run_id).alias("run_id"),
             F.lit(layer).alias("layer"),
@@ -28,4 +29,4 @@ def log_rejected(cfg, rejected: DataFrame, run_id: str, layer: str, target_table
             F.current_timestamp().alias("detected_at"))
         .write.mode("append").saveAsTable(cfg.table("ops", "data_quality_issues")))
 
-    return n_rejected
+    return n_records

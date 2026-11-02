@@ -20,7 +20,7 @@ from pyspark.sql import functions as F
 from lib.audit import audit_run
 from lib.config import Config
 from lib.master_data import latest_snapshot, merge_snapshot_scd1
-from lib.quality import log_rejected
+from lib.quality import log_quality_issues
 
 cfg = Config(catalog=dbutils.widgets.get("catalog"))
 JOB_RUN_ID = dbutils.widgets.get("job_run_id")
@@ -97,7 +97,7 @@ for name, key, transform in ENTITIES:
         run.rows_read = snapshot.count()
 
         # 2. Quality: rows without business key are logged and excluded
-        run.rows_rejected = log_rejected(
+        run.rows_rejected = log_quality_issues(
             cfg, snapshot.filter(F.col(key).isNull()), run.run_id,
             layer="silver", target_table=target_table, rule_name=f"{key}_null", key=key)
         valid = snapshot.filter(F.col(key).isNotNull())

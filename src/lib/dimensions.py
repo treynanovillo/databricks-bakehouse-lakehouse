@@ -1,16 +1,11 @@
 """Dimension loading patterns for the gold layer: SCD Type 1 and SCD Type 2."""
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from lib.delta_utils import run_merge
 
 _NULL_TOKEN = "<NULL>"                       # so NULL and "" hash differently
 _BEGINNING_OF_TIME = "TIMESTAMP'1900-01-01'"  # first version: older facts still match
 _END_OF_TIME = "TIMESTAMP'9999-12-31'"        # valid_to of the current version
-
-
-def run_merge(spark: SparkSession, merge_sql: str) -> int:
-    """Execute a MERGE statement and return the number of rows inserted + updated."""
-    metrics = spark.sql(merge_sql).first()
-    return int(metrics["num_inserted_rows"]) + int(metrics["num_updated_rows"])
 
 
 def upsert_scd1(source: DataFrame, target_table: str, key: str, attributes: list[str]) -> int:
