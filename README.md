@@ -134,7 +134,7 @@ flowchart LR
 timeouts, duration alerts, `max_concurrent_runs = 1` (watermark-based loads never overlap), cost
 attribution tags and failure notifications. Defined in `resources/bakehouse_daily.job.yml`.
 
-![Job run](docs/job_graph.png)
+![Job run](docs/images/job_graph.png)
 
 ## Imperative vs declarative
 
@@ -152,7 +152,7 @@ SCD1 and SCD2, and a materialized view for the gold aggregate.
 Note: AUTO CDC sets `__START_AT` from `sequence_by`, so the first version of a customer does not cover
 facts older than the first snapshot; a point-in-time join over it needs a view that extends the first version.
 
-![Declarative pipeline](docs/pipeline_graph.png)
+![Declarative pipeline](docs/images/pipeline_graph.png)
 
 ## Reproducibility: rebuilt from scratch
 
@@ -221,9 +221,9 @@ schedule enabled); it is not deployable in Free Edition.
   SCD2 rules (count `customer_id`, not `customer_key`; point-in-time vs current attributes),
   curated example queries and a benchmark used as a regression test.
 
-![Sales dashboard](docs/dashboard.png)
+![Sales dashboard](docs/images/dashboard.png)
 
-![Genie agent](docs/genie.png)
+![Genie agent](docs/images/genie.png)
 
 ## Future work
 
