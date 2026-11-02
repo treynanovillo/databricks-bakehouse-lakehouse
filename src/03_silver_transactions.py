@@ -134,9 +134,11 @@ print(f"Read: {run.rows_read} | written: {run.rows_written} | rejected: {run.row
 
 # MAGIC %sql
 # MAGIC -- Contract checks: one row per sale (duplicates = 0) and corrections applied
+# MAGIC USE CATALOG IDENTIFIER(:catalog);
+# MAGIC
 # MAGIC SELECT
 # MAGIC   COUNT(*)                                   AS sales,
 # MAGIC   COUNT(DISTINCT transaction_id)             AS distinct_sales,
 # MAGIC   COUNT(*) - COUNT(DISTINCT transaction_id)  AS duplicates,
 # MAGIC   COUNT(updated_at)                          AS modified_sales
-# MAGIC FROM IDENTIFIER(:catalog || '.silver.transactions');
+# MAGIC FROM silver.transactions;

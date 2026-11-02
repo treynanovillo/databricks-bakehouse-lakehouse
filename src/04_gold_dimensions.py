@@ -95,12 +95,13 @@ def load_dim_customer(target: str) -> int:
         type1=["full_name", "email", "continent", "gender"])
 
 
-# Dimensions processed by this notebook: (table name, loader)
+# Dimensions processed by this notebook: (table name, source table, loader).
+# The source is used to report rows_read; dim_date is generated (no source).
 DIMENSIONS = [
-    ("dim_date", load_dim_date),
-    ("dim_franchise", load_dim_franchise),
-    ("dim_product", load_dim_product),
-    ("dim_customer", load_dim_customer),
+    ("dim_date",      None,                                    load_dim_date),
+    ("dim_franchise", cfg.table("silver", "franchises"),       load_dim_franchise),
+    ("dim_product",   cfg.table("silver", "transactions"),     load_dim_product),
+    ("dim_customer",  cfg.table("silver", "customers"),        load_dim_customer),
 ]
 
 # COMMAND ----------
@@ -108,31 +109,36 @@ DIMENSIONS = [
 # =============================================================================
 # Load all dimensions (one audited run per dimension)
 # =============================================================================
-for name, loader in DIMENSIONS:
+for name, source_table, loader in DIMENSIONS:
     target = cfg.table("gold", name)
     with audit_run(cfg, "04_gold_dimensions", "gold", target, JOB_RUN_ID) as run:
+        run.rows_read = spark.table(source_table).count() if source_table else None
         run.rows_written = loader(target)
-    print(f"{target}: {run.rows_written} rows inserted/updated")
+    print(f"{target}: read {run.rows_read} | written {run.rows_written}")
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC -- Dimension sizes (the -1 unknown member is included in each count)
-# MAGIC SELECT 'dim_date' AS dimension, COUNT(*) AS row_count FROM workspace.gold.dim_date
-# MAGIC UNION ALL SELECT 'dim_franchise', COUNT(*) FROM workspace.gold.dim_franchise
-# MAGIC UNION ALL SELECT 'dim_product',   COUNT(*) FROM workspace.gold.dim_product
-# MAGIC UNION ALL SELECT 'dim_customer',  COUNT(*) FROM workspace.gold.dim_customer;
+# MAGIC USE CATALOG IDENTIFIER(:catalog);
+# MAGIC
+# MAGIC SELECT 'dim_date' AS dimension, COUNT(*) AS row_count FROM gold.dim_date
+# MAGIC UNION ALL SELECT 'dim_franchise', COUNT(*) FROM gold.dim_franchise
+# MAGIC UNION ALL SELECT 'dim_product',   COUNT(*) FROM gold.dim_product
+# MAGIC UNION ALL SELECT 'dim_customer',  COUNT(*) FROM gold.dim_customer;
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC -- SCD2 check: customers with more than one version (one row per version)
+# MAGIC USE CATALOG IDENTIFIER(:catalog);
+# MAGIC
 # MAGIC SELECT customer_id, customer_key, city, state, country, email,
 # MAGIC        valid_from, valid_to, is_current
-# MAGIC FROM workspace.gold.dim_customer
+# MAGIC FROM gold.dim_customer
 # MAGIC WHERE customer_id IN (
 # MAGIC   SELECT customer_id
-# MAGIC   FROM workspace.gold.dim_customer
+# MAGIC   FROM gold.dim_customer
 # MAGIC   GROUP BY customer_id
 # MAGIC   HAVING COUNT(*) > 1
 # MAGIC )
@@ -143,12 +149,14 @@ for name, loader in DIMENSIONS:
 # MAGIC %sql
 # MAGIC -- Type-1 check: email changes are overwritten in place (still one version per customer,
 # MAGIC -- unless the customer also moved)
+# MAGIC USE CATALOG IDENTIFIER(:catalog);
+# MAGIC
 # MAGIC SELECT d.customer_id,
 # MAGIC        COUNT(*)                       AS versions,
 # MAGIC        MAX_BY(d.email, d.valid_from)  AS current_email
-# MAGIC FROM workspace.gold.dim_customer d
+# MAGIC FROM gold.dim_customer d
 # MAGIC WHERE d.customer_id IN (
-# MAGIC   SELECT customer_id FROM workspace.gold.dim_customer WHERE email LIKE 'new.%'
+# MAGIC   SELECT customer_id FROM gold.dim_customer WHERE email LIKE 'new.%'
 # MAGIC )
 # MAGIC GROUP BY d.customer_id
 # MAGIC ORDER BY versions DESC, d.customer_id;
