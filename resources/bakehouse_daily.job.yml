@@ -63,7 +63,7 @@ resources:
       tasks:
         - task_key: bronze
           notebook_task:
-            notebook_path: ../src/02_bronze
+            notebook_path: ../src/02_bronze.py
           environment_key: Default
           max_retries: 2
           min_retry_interval_millis: 120000
@@ -79,7 +79,7 @@ resources:
           depends_on:
             - task_key: bronze
           notebook_task:
-            notebook_path: ../src/03_silver_transactions
+            notebook_path: ../src/03_silver_transactions.py
           environment_key: Default
           max_retries: 1
           min_retry_interval_millis: 120000
@@ -95,7 +95,7 @@ resources:
           depends_on:
             - task_key: bronze
           notebook_task:
-            notebook_path: ../src/03_silver_master_data
+            notebook_path: ../src/03_silver_master_data.py
           environment_key: Default
           max_retries: 1
           min_retry_interval_millis: 120000
@@ -112,7 +112,7 @@ resources:
             - task_key: silver_transactions
             - task_key: silver_master_data
           notebook_task:
-            notebook_path: ../src/04_gold_dimensions
+            notebook_path: ../src/04_gold_dimensions.py
           environment_key: Default
           max_retries: 1
           min_retry_interval_millis: 120000
@@ -128,7 +128,7 @@ resources:
           depends_on:
             - task_key: gold_dimensions
           notebook_task:
-            notebook_path: ../src/04_gold_fact_sales
+            notebook_path: ../src/04_gold_fact_sales.py
           environment_key: Default
           max_retries: 1
           min_retry_interval_millis: 120000
@@ -144,7 +144,7 @@ resources:
           depends_on:
             - task_key: gold_fact_sales
           notebook_task:
-            notebook_path: ../src/99_smoke_tests
+            notebook_path: ../src/99_smoke_tests.py
           environment_key: Default
           max_retries: 0
           timeout_seconds: 600
