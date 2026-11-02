@@ -1,6 +1,6 @@
 # =============================================================================
 # bakehouse_daily: daily orchestration of the medallion pipeline
-# Source of truth for the job definition (deployed with Databricks Asset Bundles).
+# Notebook paths are relative to this file; the bundle uploads the code.
 # =============================================================================
 resources:
   jobs:
@@ -9,15 +9,16 @@ resources:
       description: |
         Daily medallion pipeline for the Bakehouse lakehouse.
         Loads incremental sales and full-load master data (customers, franchises)
-        through bronze -> silver -> gold (Kimball star schema with SCD2 customers).
-        Audit log: workspace.ops.pipeline_runs (filter by job_run_id).
-        Data quality: workspace.ops.data_quality_issues.
+        through bronze -> silver -> gold (Kimball star schema with SCD2 customers),
+        then runs data smoke tests.
+        Audit log: ops.pipeline_runs (filter by job_run_id).
+        Data quality: ops.data_quality_issues.
         Owner: Tomás Reyna.
 
       tags:
         project: bakehouse
         domain: sales
-        env: dev
+        env: ${bundle.target}
         owner: tomas.reyna
         cost_center: data-platform
 
@@ -35,26 +36,20 @@ resources:
 
       email_notifications:
         on_failure:
-          - ${var.notification_email}                    # defined per target in databricks.yml
+          - ${var.notification_email}
         on_duration_warning_threshold_exceeded:
           - ${var.notification_email}
 
       schedule:
         quartz_cron_expression: 0 30 2 * * ?             # every day at 02:30
         timezone_id: Europe/Madrid
-        pause_status: PAUSED                             # paused in dev
+        pause_status: PAUSED                             # unpaused by the prod target
 
       parameters:
         - name: catalog
-          default: workspace
+          default: ${var.catalog}
         - name: job_run_id
           default: "{{job.run_id}}"
-
-      # --- Code and runtime ------------------------------------------------------
-      git_source:
-        git_url: https://github.com/treynanovillo/databricks-bakehouse-lakehouse
-        git_provider: gitHub
-        git_branch: main
 
       environments:
         - environment_key: Default
@@ -62,28 +57,13 @@ resources:
             environment_version: "6"                     # pinned for reproducibility
 
       # --- Tasks -------------------------------------------------------------------
-      # Retry policy: bronze 2 retries (schema evolution restarts), others 1.
-      # Every task: 2 min between retries, 30 min timeout, warning after 15 min.
+      # Load tasks: 2 min between retries, 30 min timeout, warning after 15 min.
+      # Bronze gets 2 retries (schema evolution restarts the stream once).
+      # Smoke tests never retry: a failed data check gives the same result again.
       tasks:
-        - task_key: bronze_transactions
+        - task_key: bronze
           notebook_task:
-            notebook_path: src/02_bronze
-            source: GIT
-          environment_key: Default
-          max_retries: 2
-          min_retry_interval_millis: 120000
-          retry_on_timeout: false
-          timeout_seconds: 1800
-          health:
-            rules:
-              - metric: RUN_DURATION_SECONDS
-                op: GREATER_THAN
-                value: 900
-
-        - task_key: bronze_master_data
-          notebook_task:
-            notebook_path: src/02_bronze_master_data
-            source: GIT
+            notebook_path: ../src/02_bronze
           environment_key: Default
           max_retries: 2
           min_retry_interval_millis: 120000
@@ -97,10 +77,9 @@ resources:
 
         - task_key: silver_transactions
           depends_on:
-            - task_key: bronze_transactions
+            - task_key: bronze
           notebook_task:
-            notebook_path: src/03_silver_transactions
-            source: GIT
+            notebook_path: ../src/03_silver_transactions
           environment_key: Default
           max_retries: 1
           min_retry_interval_millis: 120000
@@ -114,10 +93,9 @@ resources:
 
         - task_key: silver_master_data
           depends_on:
-            - task_key: bronze_master_data
+            - task_key: bronze
           notebook_task:
-            notebook_path: src/03_silver_master_data
-            source: GIT
+            notebook_path: ../src/03_silver_master_data
           environment_key: Default
           max_retries: 1
           min_retry_interval_millis: 120000
@@ -134,8 +112,7 @@ resources:
             - task_key: silver_transactions
             - task_key: silver_master_data
           notebook_task:
-            notebook_path: src/04_gold_dimensions
-            source: GIT
+            notebook_path: ../src/04_gold_dimensions
           environment_key: Default
           max_retries: 1
           min_retry_interval_millis: 120000
@@ -151,8 +128,7 @@ resources:
           depends_on:
             - task_key: gold_dimensions
           notebook_task:
-            notebook_path: src/04_gold_fact_sales
-            source: GIT
+            notebook_path: ../src/04_gold_fact_sales
           environment_key: Default
           max_retries: 1
           min_retry_interval_millis: 120000
@@ -163,3 +139,12 @@ resources:
               - metric: RUN_DURATION_SECONDS
                 op: GREATER_THAN
                 value: 900
+
+        - task_key: smoke_tests
+          depends_on:
+            - task_key: gold_fact_sales
+          notebook_task:
+            notebook_path: ../src/99_smoke_tests
+          environment_key: Default
+          max_retries: 0
+          timeout_seconds: 600
