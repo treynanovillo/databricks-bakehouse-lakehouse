@@ -19,7 +19,8 @@ from pyspark.sql import functions as F
 
 from lib.audit import audit_run
 from lib.config import Config
-from lib.dimensions import apply_scd2, run_merge, upsert_scd1
+from lib.delta_utils import run_merge
+from lib.dimensions import apply_scd2, upsert_scd1
 
 cfg = Config(catalog=dbutils.widgets.get("catalog"))
 JOB_RUN_ID = dbutils.widgets.get("job_run_id")
